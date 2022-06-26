@@ -1,0 +1,6 @@
+digraph Components {
+    A -> B [label="imports"];
+    A -> C [label="imports"];
+    A -> Scanned [label="scans"];
+    C -> D [label="imports"];
+}

@@ -1,4 +1,0 @@
-import foo.bar;
-
-@Import ({Something.class, Potato.class})
-class ClassName { ... }
