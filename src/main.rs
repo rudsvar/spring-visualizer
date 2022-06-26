@@ -1,10 +1,42 @@
 use std::{
     error::Error,
+    ffi::OsString,
     fs::File,
     io::{BufReader, Read},
+    path::Path,
+    str::FromStr,
 };
+use walkdir::{DirEntry, WalkDir};
 
-use walkdir::WalkDir;
+fn read_file(path: &Path) -> Result<String, Box<dyn Error>> {
+    // Read file contents
+    let f = File::open(&path)?;
+    let mut f = BufReader::new(f);
+    let mut buf = String::new();
+    f.read_to_string(&mut buf)?;
+    Ok(buf)
+}
+
+fn javafiles(package: &str) -> Result<Vec<DirEntry>, Box<dyn Error>> {
+    let mut entries = Vec::new();
+    for entry in WalkDir::new(".") {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let ext = entry.path().extension();
+        let java_ext = OsString::from_str("java").unwrap();
+        let is_java = ext == Some(&java_ext);
+
+        let is_right_package = path.to_str().unwrap().contains(package);
+        if is_java && is_right_package {
+            entries.push(entry);
+        }
+    }
+    Ok(entries)
+}
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args = std::env::args();
@@ -14,30 +46,23 @@ fn main() -> Result<(), Box<dyn Error>> {
         .ok_or_else(|| format!("Usage: {} <path>", executable))?;
     println!("digraph Components {{");
 
-    for entry in WalkDir::new(&dir) {
-        let entry = entry?;
-        if entry.file_type().is_file() {
-            // Read file contents
-            let path = entry.path();
-            let f = File::open(&path)?;
-            let mut f = BufReader::new(f);
-            let mut buf = String::new();
-            f.read_to_string(&mut buf)?;
+    for entry in javafiles(&dir)? {
+        // Read file contents
+        let buf = read_file(entry.path()).unwrap();
 
-            // Parse imports
-            let import = parse_import(&buf);
-            if let Some(import) = import {
-                for e in import.edges() {
-                    println!("    {}", e);
-                }
+        // Parse imports
+        let import = parse_import(&buf);
+        if let Some(import) = import {
+            for e in import.edges() {
+                println!("    {}", e);
             }
+        }
 
-            // Parse component scans
-            let scans = ComponentScan::parse(&buf);
-            if let Some(scan) = scans {
-                for e in scan.edges(&dir) {
-                    println!("    {}", e);
-                }
+        // Parse component scans
+        let scans = ComponentScan::parse(&buf);
+        if let Some(scan) = scans {
+            for e in scan.edges(&dir) {
+                println!("    {}", e);
             }
         }
     }
