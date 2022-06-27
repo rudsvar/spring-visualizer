@@ -46,6 +46,23 @@ fn main() -> Result<(), Box<dyn Error>> {
         .ok_or_else(|| format!("Usage: {} <path>", executable))?;
     println!("digraph Components {{");
 
+    println!("    # Legend");
+    println!("    \"@SpringBootApplication\" [fillcolor=\"#28a9e0\",style=filled];");
+    println!("    \"@Configuration\" [fillcolor=\"#2c9162\",style=filled];");
+    println!("    \"@Controller\" [fillcolor=\"#7050bf\",style=filled];");
+    println!("    \"@Service\" [fillcolor=\"#a81347\",style=filled];");
+    println!("    \"@Repository\" [fillcolor=\"#ffc400\",style=filled];");
+    println!("    \"Directory\" [fillcolor=\"#97de50\",style=filled];");
+    println!();
+
+    println!("    # Align legend");
+    println!(r#"    "@SpringBootApplication" -> "@Configuration" [style=invis];"#);
+    println!(r#"    "@Configuration" -> "@Controller" [style=invis];"#);
+    println!(r#"    "@Controller" -> "@Service" [style=invis];"#);
+    println!(r#"    "@Service" -> "@Repository" [style=invis];"#);
+    println!(r#"    "@Repository" -> "Directory" [style=invis];"#);
+    println!();
+
     for entry in javafiles(&dir) {
         // Get filename
         let filename = entry
