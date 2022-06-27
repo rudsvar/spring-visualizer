@@ -1,4 +1,5 @@
 digraph Components {
+    Scanned -> AlsoScanned [label=autowires]
     "A" -> "B" [label="imports"];
     "A" -> "C" [label="imports"];
     "A" -> "scanned-dir" [label="scans"];

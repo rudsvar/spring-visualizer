@@ -76,12 +76,18 @@ fn main() -> Result<(), Box<dyn Error>> {
         for b in beans {
             println!("    {} -> {} [label=defines]", filename, b.class_name);
         }
+
+        let dependencies = Dependency::parse(&buf);
+        for d in dependencies {
+            println!("    {} -> {} [label=autowires]", filename, d.class_name);
+        }
     }
 
     println!("}}");
 
     Ok(())
 }
+
 struct Annotation {
     class_name: String,
     values: Vec<String>,
@@ -246,9 +252,31 @@ impl Bean {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Dependency {
+    class_name: String,
+}
+
+impl Dependency {
+    pub fn new(class_name: String) -> Self {
+        Self { class_name }
+    }
+
+    pub fn parse(mut input: &str) -> Vec<Dependency> {
+        let mut dependencies = Vec::new();
+        while let Some(pos) = input.find("@Autowire") {
+            // Skip @Autowire
+            input = input[pos + "@Autowire".len()..].trim_start();
+            let class_name = input.chars().take_while(|c| c.is_alphabetic()).collect();
+            dependencies.push(Dependency { class_name })
+        }
+        dependencies
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{parse_import, ComponentScan, Import};
+    use crate::{parse_import, Bean, ComponentScan, Dependency, Import};
 
     #[test]
     fn single_import() {
@@ -306,37 +334,6 @@ mod tests {
         );
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct Bean {
-        class_name: String,
-    }
-
-    impl Bean {
-        pub fn new(class_name: String) -> Self {
-            Self { class_name }
-        }
-
-        pub fn parse(mut input: &str) -> Vec<Bean> {
-            let mut beans = Vec::new();
-            while let Some(pos) = input.find("@Bean") {
-                // Skip @Bean
-                input = &input[pos + "@Bean".len()..];
-                // Stop at (
-                let start_paren = input.find('(').expect("start paren");
-                let between = &input[..start_paren];
-                // Skip visibility modifier
-                let between = between
-                    .trim_start()
-                    .trim_start_matches("public")
-                    .trim_start_matches("private")
-                    .trim_start();
-                let class_name = between.chars().take_while(|c| c.is_alphabetic()).collect();
-                beans.push(Bean { class_name })
-            }
-            beans
-        }
-    }
-
     #[test]
     fn bean_defs() {
         let my_str = r#"
@@ -355,6 +352,24 @@ mod tests {
                 Bean::new("A".to_string()),
                 Bean::new("B".to_string()),
                 Bean::new("C".to_string()),
+            ],
+            c
+        );
+    }
+
+    #[test]
+    fn dependencies() {
+        let my_str = r#"
+        class MyClass {
+            @Autowire A a;
+            @Autowire B b;
+        }
+        "#;
+        let c = Dependency::parse(my_str);
+        assert_eq!(
+            vec![
+                Dependency::new("A".to_string()),
+                Dependency::new("B".to_string()),
             ],
             c
         );
