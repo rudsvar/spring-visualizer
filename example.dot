@@ -1,6 +1,9 @@
 digraph Components {
-    A -> B [label="imports"];
-    A -> C [label="imports"];
-    A -> Scanned [label="scans"];
-    C -> D [label="imports"];
+    "A" -> "B" [label="imports"];
+    "A" -> "C" [label="imports"];
+    "A" -> "scanned-dir" [label="scans"];
+    "scanned-dir" -> "AlsoScanned" [label="contains"];
+    "scanned-dir" -> "Scanned" [label="contains"];
+    A -> MyBean [label=defines]
+    "C" -> "D" [label="imports"];
 }

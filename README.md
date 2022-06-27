@@ -6,11 +6,23 @@ Spring visualizer produces a graph of the application context based on your Java
 
 1. Configuration classes with
    [x] edges to their imports and
-   [ ] bean definitions.
+   [x] bean definitions.
 2. Component scanning overview including
    [x] which packages and
    [x] which component are scanned,
    [ ] with warnings when components are not scanned.
 3. Overview of
    [ ] autowired dependencies of components, and
-   [ ] warnings when any are not marked as components.
+   [ ] warnings when they are not component-scanned components or defined as beans.
+
+## Example
+
+If you run the command below
+
+```
+cargo run -- data > example.dot && dot -Tpng example.dot -o example.png
+```
+
+then you will get the following output:
+
+![](./example.png)

@@ -17,13 +17,12 @@ fn read_file(path: &Path) -> Result<String, Box<dyn Error>> {
     Ok(buf)
 }
 
-fn javafiles(package: &str) -> Result<Vec<DirEntry>, Box<dyn Error>> {
-    let mut entries = Vec::new();
-    for entry in WalkDir::new(".") {
-        let entry = entry?;
+fn javafiles(package: &str) -> impl Iterator<Item = DirEntry> + '_ {
+    WalkDir::new(".").into_iter().filter_map(move |entry| {
+        let entry = entry.unwrap();
         let path = entry.path();
         if !path.is_file() {
-            continue;
+            return None;
         }
 
         let ext = entry.path().extension();
@@ -32,10 +31,11 @@ fn javafiles(package: &str) -> Result<Vec<DirEntry>, Box<dyn Error>> {
 
         let is_right_package = path.to_str().unwrap().contains(package);
         if is_java && is_right_package {
-            entries.push(entry);
+            Some(entry)
+        } else {
+            None
         }
-    }
-    Ok(entries)
+    })
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -46,7 +46,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         .ok_or_else(|| format!("Usage: {} <path>", executable))?;
     println!("digraph Components {{");
 
-    for entry in javafiles(&dir)? {
+    for entry in javafiles(&dir) {
+        // Get filename
+        let filename = entry
+            .file_name()
+            .to_str()
+            .expect("invalid utf-8 filename")
+            .trim_end_matches(".java");
         // Read file contents
         let buf = read_file(entry.path()).unwrap();
 
@@ -65,6 +71,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                 println!("    {}", e);
             }
         }
+
+        let beans = Bean::parse(&buf);
+        for b in beans {
+            println!("    {} -> {} [label=defines]", filename, b.class_name);
+        }
     }
 
     println!("}}");
@@ -79,8 +90,8 @@ struct Annotation {
 fn find_annotation(annotation_name: &str, input: &str) -> Option<Annotation> {
     // Find import
     let input = &input[input.find(&format!("@{}", &annotation_name))?..];
-    let start_paren = input.find("(")?;
-    let end_paren = input.find(")")?;
+    let start_paren = input.find('(')?;
+    let end_paren = input.find(')')?;
     let between = &input[start_paren + 1..end_paren];
     let values: Vec<String> = between
         .trim_start_matches('{')
@@ -97,7 +108,7 @@ fn find_annotation(annotation_name: &str, input: &str) -> Option<Annotation> {
 }
 
 fn find_class_name(input: &str) -> Option<String> {
-    const CLASS: &'static str = "class";
+    const CLASS: &str = "class";
     let start_of_class = input.find(CLASS)?;
     let input = &input[start_of_class + CLASS.len()..];
     let start_of_name = input.find(|c: char| c.is_alphabetic())?;
@@ -108,15 +119,18 @@ fn find_class_name(input: &str) -> Option<String> {
 
 #[derive(Debug, PartialEq, Eq)]
 struct Import {
-    name: String,
-    children: Vec<String>,
+    class_name: String,
+    classes: Vec<String>,
 }
 
 impl Import {
     pub fn edges(&self) -> Vec<String> {
         let mut buf = Vec::new();
-        for c in &self.children {
-            buf.push(format!("{} -> {} [label=\"imports\"];", self.name, c));
+        for c in &self.classes {
+            buf.push(format!(
+                r#""{}" -> "{}" [label="imports"];"#,
+                self.class_name, c
+            ));
         }
         buf
     }
@@ -130,8 +144,8 @@ fn parse_import(input: &str) -> Option<Import> {
         .map(|v| v.trim().trim_end_matches(".class").to_string())
         .collect();
     let import = Import {
-        name: annotation.class_name,
-        children,
+        class_name: annotation.class_name,
+        classes: children,
     };
     Some(import)
 }
@@ -139,7 +153,7 @@ fn parse_import(input: &str) -> Option<Import> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ComponentScan {
     class_name: String,
-    paths: Vec<String>,
+    packages: Vec<String>,
 }
 
 impl ComponentScan {
@@ -152,21 +166,30 @@ impl ComponentScan {
             .collect();
         let component_scan = ComponentScan {
             class_name: annotation.class_name,
-            paths,
+            packages: paths,
         };
         Some(component_scan)
     }
     fn edges(&self, dir: &str) -> Vec<String> {
         let mut edges = Vec::new();
-        for entry in javafiles(dir).unwrap() {
-            // Is file and is in scan path
-            let is_scanned = self
-                .paths
+        // Paths that this scans
+        for path in &self.packages {
+            edges.push(format!(
+                r#""{}" -> "{}" [label="scans"];"#,
+                self.class_name, path
+            ));
+        }
+        // Files scanned
+        for entry in javafiles(dir) {
+            // Find out which package this file is in
+            let scanned_by = self
+                .packages
                 .iter()
-                .any(|p| entry.path().to_str().expect("weird filename").contains(p));
-            if !is_scanned {
+                .find(|&p| entry.path().to_str().expect("weird filename").contains(p));
+            if scanned_by.is_none() {
                 continue;
             }
+            let scanned_by = scanned_by.expect("just checked");
 
             // Read file
             let path = entry.path();
@@ -183,8 +206,8 @@ impl ComponentScan {
 
             if is_component {
                 edges.push(format!(
-                    "{} -> {} [label=\"scans\"];",
-                    self.class_name, file_name
+                    r#""{}" -> "{}" [label="contains"];"#,
+                    scanned_by, file_name
                 ));
             }
         }
@@ -192,58 +215,148 @@ impl ComponentScan {
     }
 }
 
-#[test]
-fn single_import() {
-    let my_str = r#"
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Bean {
+    class_name: String,
+}
+
+impl Bean {
+    pub fn new(class_name: String) -> Self {
+        Self { class_name }
+    }
+
+    pub fn parse(mut input: &str) -> Vec<Bean> {
+        let mut beans = Vec::new();
+        while let Some(pos) = input.find("@Bean") {
+            // Skip @Bean
+            input = &input[pos + "@Bean".len()..];
+            // Stop at (
+            let start_paren = input.find('(').expect("start paren");
+            let between = &input[..start_paren];
+            // Skip visibility modifier
+            let between = between
+                .trim_start()
+                .trim_start_matches("public")
+                .trim_start_matches("private")
+                .trim_start();
+            let class_name = between.chars().take_while(|c| c.is_alphabetic()).collect();
+            beans.push(Bean { class_name })
+        }
+        beans
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{parse_import, ComponentScan, Import};
+
+    #[test]
+    fn single_import() {
+        let my_str = r#"
         import foo.bar;
-        
+
         @Import ( Something.class )
         class ClassName { ... }
         "#;
-    let c = parse_import(my_str);
-    assert_eq!(
-        Some(Import {
-            name: "ClassName".to_string(),
-            children: vec!["Something".to_string()]
-        }),
-        c
-    );
-}
+        let c = parse_import(my_str);
+        assert_eq!(
+            Some(Import {
+                class_name: "ClassName".to_string(),
+                classes: vec!["Something".to_string()]
+            }),
+            c
+        );
+    }
 
-#[test]
-fn multi_import() {
-    let my_str = r#"
+    #[test]
+    fn multi_import() {
+        let my_str = r#"
         import foo.bar;
-        
+
         @Import ({ Something.class, Potato.class })
         class ClassName { ... }
         "#;
-    let c = parse_import(my_str);
-    assert_eq!(
-        Some(Import {
-            name: "ClassName".to_string(),
-            children: vec!["Something".to_string(), "Potato".to_string()]
-        }),
-        c
-    );
-}
+        let c = parse_import(my_str);
+        assert_eq!(
+            Some(Import {
+                class_name: "ClassName".to_string(),
+                classes: vec!["Something".to_string(), "Potato".to_string()]
+            }),
+            c
+        );
+    }
 
-#[test]
-fn component_scan() {
-    let my_str = r#"
+    #[test]
+    fn component_scan() {
+        let my_str = r#"
         import foo.bar;
-        
+
         @ComponentScan(
             "foo.bar.baz"
         )
         class ClassName { ... }
         "#;
-    let c = ComponentScan::parse(my_str);
-    assert_eq!(
-        Some(ComponentScan {
-            class_name: "ClassName".to_string(),
-            paths: vec!["foo.bar.baz".to_string()]
-        }),
-        c
-    );
+        let c = ComponentScan::parse(my_str);
+        assert_eq!(
+            Some(ComponentScan {
+                class_name: "ClassName".to_string(),
+                packages: vec!["foo.bar.baz".to_string()]
+            }),
+            c
+        );
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct Bean {
+        class_name: String,
+    }
+
+    impl Bean {
+        pub fn new(class_name: String) -> Self {
+            Self { class_name }
+        }
+
+        pub fn parse(mut input: &str) -> Vec<Bean> {
+            let mut beans = Vec::new();
+            while let Some(pos) = input.find("@Bean") {
+                // Skip @Bean
+                input = &input[pos + "@Bean".len()..];
+                // Stop at (
+                let start_paren = input.find('(').expect("start paren");
+                let between = &input[..start_paren];
+                // Skip visibility modifier
+                let between = between
+                    .trim_start()
+                    .trim_start_matches("public")
+                    .trim_start_matches("private")
+                    .trim_start();
+                let class_name = between.chars().take_while(|c| c.is_alphabetic()).collect();
+                beans.push(Bean { class_name })
+            }
+            beans
+        }
+    }
+
+    #[test]
+    fn bean_defs() {
+        let my_str = r#"
+        @Bean
+        public A a() { ... }
+
+        @Bean
+        private B b() { ... }
+
+        @Bean
+        C c() { ... }
+        "#;
+        let c = Bean::parse(my_str);
+        assert_eq!(
+            vec![
+                Bean::new("A".to_string()),
+                Bean::new("B".to_string()),
+                Bean::new("C".to_string()),
+            ],
+            c
+        );
+    }
 }
