@@ -158,40 +158,34 @@ impl ComponentScan {
     }
     fn edges(&self, dir: &str) -> Vec<String> {
         let mut edges = Vec::new();
-        for entry in WalkDir::new(dir) {
-            if let Ok(entry) = entry {
-                // Is file and is in scan path
-                let is_file = entry.file_type().is_file();
-                let is_scanned = self
-                    .paths
-                    .iter()
-                    .any(|p| entry.path().to_str().expect("weird filename").contains(p));
-                if !is_file || !is_scanned {
-                    continue;
-                }
+        for entry in javafiles(dir).unwrap() {
+            // Is file and is in scan path
+            let is_scanned = self
+                .paths
+                .iter()
+                .any(|p| entry.path().to_str().expect("weird filename").contains(p));
+            if !is_scanned {
+                continue;
+            }
 
-                // Read file
-                let path = entry.path();
-                let f = File::open(&path).expect("failed to open file");
-                let mut f = BufReader::new(f);
-                let mut buf = String::new();
-                f.read_to_string(&mut buf).expect("failed to read file");
+            // Read file
+            let path = entry.path();
+            let buf = read_file(path).unwrap();
 
-                // Check if marked as component
-                let component_types = ["@Component", "@Repository", "@Service", "@Configuration"];
-                let is_component = component_types.iter().any(|ct| buf.contains(ct));
-                let file_name = entry
-                    .file_name()
-                    .to_str()
-                    .unwrap()
-                    .trim_end_matches(".java");
+            // Check if marked as component
+            let component_types = ["@Component", "@Repository", "@Service", "@Configuration"];
+            let is_component = component_types.iter().any(|ct| buf.contains(ct));
+            let file_name = entry
+                .file_name()
+                .to_str()
+                .unwrap()
+                .trim_end_matches(".java");
 
-                if is_component {
-                    edges.push(format!(
-                        "{} -> {} [label=\"scans\"];",
-                        self.class_name, file_name
-                    ));
-                }
+            if is_component {
+                edges.push(format!(
+                    "{} -> {} [label=\"scans\"];",
+                    self.class_name, file_name
+                ));
             }
         }
         edges
