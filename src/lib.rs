@@ -1,8 +1,8 @@
 use nom::{
     bytes::complete::is_not,
     bytes::complete::{tag, take_until, take_while},
-    character::complete::{char, space0},
-    combinator::opt,
+    character::complete::{char, multispace0, space0},
+    combinator::{map, opt},
     multi::many0,
     sequence::delimited,
     IResult,
@@ -17,21 +17,24 @@ pub enum Value {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Values {
+pub enum Args {
     Single(Value),
     Multi(HashMap<String, Value>),
 }
 
-/// @Annotation
-/// @Annotation()
-/// @Annotation(Test.class)
-/// @Annotation("string")
-/// @Annotation(value = "string")
-/// @Annotation(value = {"string"})
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Annotation {
     name: String,
-    values: Values,
+    args: Args,
+}
+
+impl Annotation {
+    pub fn value(&self) -> Option<&Value> {
+        match &self.args {
+            Args::Single(v) => Some(v),
+            Args::Multi(vs) => vs.get("value"),
+        }
+    }
 }
 
 pub fn parse_single_value(input: &str) -> IResult<&str, Value> {
@@ -69,7 +72,6 @@ pub fn parse_multi_value(input: &str) -> IResult<&str, HashMap<String, Value>> {
         let (input, value) = parse_single_value(input)?;
         let (input, _) = opt(tag(","))(input)?;
         let (input, _) = space0(input)?;
-        eprintln!("Got single value {value:?}");
         Ok((input, (key.to_string(), value)))
     })(input)?;
     dbg!(&key_value_pairs);
@@ -77,34 +79,75 @@ pub fn parse_multi_value(input: &str) -> IResult<&str, HashMap<String, Value>> {
     Ok((input, values))
 }
 
-pub fn parse_values(input: &str) -> IResult<&str, Values> {
+pub fn parse_args(input: &str) -> IResult<&str, Args> {
     if input.contains('=') {
-        let (input, vs) = parse_multi_value(input)?;
-        Ok((input, Values::Multi(vs)))
+        map(parse_multi_value, Args::Multi)(input)
     } else {
-        let (input, v) = parse_single_value(input)?;
-        Ok((input, Values::Single(v)))
+        map(parse_single_value, Args::Single)(input)
     }
 }
 
 pub fn parse_annotation(input: &str) -> IResult<&str, Annotation> {
     let (input, _) = tag("@")(input)?;
     let (input, name) = take_while(|c: char| c.is_alphanumeric())(input)?;
-    let (input, between) = delimited(char('('), is_not(")"), char(')'))(input)?;
-    let (_, values) = parse_values(between)?;
+    let (input, _) = multispace0(input)?;
+
+    // Parse args if there are any
+    let (input, args) = if input.starts_with('(') {
+        // Parse args between parentheses
+        let (input, between) = delimited(char('('), is_not(")"), char(')'))(input)?;
+        let (_, args) = parse_args(between)?;
+        let (input, _) = multispace0(input)?;
+        (input, args)
+    } else {
+        // No args
+        (input, Args::Multi(HashMap::new()))
+    };
 
     Ok((
         input,
         Annotation {
             name: name.to_string(),
-            values,
+            args,
+        },
+    ))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Bean {
+    name: String,
+    class: String,
+}
+
+pub fn parse_bean(input: &str) -> IResult<&str, Bean> {
+    let (input, annotation) = parse_annotation(input)?;
+    // Skip visibility modifier
+    let (input, _) = opt(tag("public"))(input)?;
+    let (input, _) = opt(tag("protected"))(input)?;
+    let (input, _) = opt(tag("private"))(input)?;
+    let (input, _) = space0(input)?;
+    // Get return type
+    let (input, class) = take_while(|c: char| c.is_alphanumeric())(input)?;
+    let (input, _) = multispace0(input)?;
+    // Get method name
+    let (input, name) = take_while(|c: char| c.is_alphanumeric())(input)?;
+    // See if name has been overridden
+    let overriden_name = match annotation.value() {
+        Some(Value::String(name)) => Some(name.clone()),
+        _ => None,
+    };
+    Ok((
+        input,
+        Bean {
+            name: overriden_name.unwrap_or_else(|| name.to_string()),
+            class: class.to_string(),
         },
     ))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{parse_annotation, Annotation, Value, Values};
+    use crate::{parse_annotation, parse_bean, Annotation, Args, Bean, Value};
 
     #[test]
     pub fn parse_annotation_with_class_value_succeeds() {
@@ -113,7 +156,7 @@ mod tests {
                 "",
                 Annotation {
                     name: "MyAnnotation".to_string(),
-                    values: Values::Single(Value::Class("Test".to_string()))
+                    args: Args::Single(Value::Class("Test".to_string()))
                 }
             )),
             parse_annotation("@MyAnnotation(Test.class)")
@@ -127,7 +170,7 @@ mod tests {
                 "",
                 Annotation {
                     name: "MyAnnotation".to_string(),
-                    values: Values::Single(Value::String("com.example".to_string()))
+                    args: Args::Single(Value::String("com.example".to_string()))
                 }
             )),
             parse_annotation("@MyAnnotation(\"com.example\")")
@@ -141,7 +184,7 @@ mod tests {
                 "",
                 Annotation {
                     name: "MyAnnotation".to_string(),
-                    values: Values::Single(Value::Array(vec![
+                    args: Args::Single(Value::Array(vec![
                         Value::String("com.example".to_string()),
                         Value::Class("Foo".to_string())
                     ]))
@@ -158,7 +201,7 @@ mod tests {
                 "",
                 Annotation {
                     name: "MyAnnotation".to_string(),
-                    values: Values::Multi(
+                    args: Args::Multi(
                         vec![
                             ("foo".to_string(), Value::Class("Foo".to_string())),
                             ("bar".to_string(), Value::String("com.example".to_string())),
@@ -178,6 +221,34 @@ mod tests {
             parse_annotation(
                 "@MyAnnotation(foo = Foo.class, bar = \"com.example\", baz = {A.class, B.class})"
             )
+        );
+    }
+
+    #[test]
+    pub fn parse_bean_succeeds() {
+        assert_eq!(
+            Ok((
+                "() { ... }",
+                Bean {
+                    name: "myBean".to_string(),
+                    class: "MyBean".to_string(),
+                }
+            )),
+            parse_bean("@Bean\n    private MyBean myBean() { ... }")
+        );
+    }
+
+    #[test]
+    pub fn parse_bean_with_name_succeeds() {
+        assert_eq!(
+            Ok((
+                "() { ... }",
+                Bean {
+                    name: "newName".to_string(),
+                    class: "MyBean".to_string(),
+                }
+            )),
+            parse_bean("@Bean(\"newName\")\n    private MyBean myBean() { ... }")
         );
     }
 }
