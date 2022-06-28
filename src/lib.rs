@@ -144,12 +144,12 @@ impl Bean {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Autowire {
+pub struct Autowired {
     name: String,
     class: String,
 }
 
-impl Autowire {
+impl Autowired {
     pub fn name(&self) -> &str {
         self.name.as_ref()
     }
@@ -219,7 +219,7 @@ pub struct Class {
     component_scans: Vec<String>,
     name: String,
     #[builder(default)]
-    autowires: Vec<Autowire>,
+    autowires: Vec<Autowired>,
     #[builder(default)]
     bean_defs: Vec<Bean>,
 }
@@ -245,7 +245,7 @@ impl Class {
         self.name.as_ref()
     }
 
-    pub fn autowires(&self) -> &[Autowire] {
+    pub fn autowires(&self) -> &[Autowired] {
         self.autowires.as_ref()
     }
 
@@ -333,10 +333,10 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
     // Autowire
     let mut autowire_start = input;
     let mut autowires = Vec::new();
-    while let Some(pos) = autowire_start.find("@Autowire") {
+    while let Some(pos) = autowire_start.find("@Autowired") {
         autowire_start = &autowire_start[pos..];
         let (input, (class, name)) = delimited(
-            tag("@Autowire"),
+            tag("@Autowired"),
             |input| {
                 let (input, _) = multispace0(input)?;
                 let (input, class) = alphanumeric1(input)?;
@@ -346,7 +346,7 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
             },
             char(';'),
         )(autowire_start)?;
-        autowires.push(Autowire {
+        autowires.push(Autowired {
             class: class.to_string(),
             name: name.to_string(),
         });
@@ -374,7 +374,7 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        parse_annotation, parse_bean, parse_class, Annotation, Args, Autowire, Bean, Class,
+        parse_annotation, parse_bean, parse_class, Annotation, Args, Autowired, Bean, Class,
         ComponentType, Value,
     };
 
@@ -492,7 +492,7 @@ mod tests {
                     imports: vec!["Bar".to_string()],
                     component_scans: vec!["a.b.c".to_string()],
                     name: "Foo".to_string(),
-                    autowires: vec![Autowire {
+                    autowires: vec![Autowired {
                         class: "Foo".to_string(),
                         name: "foo".to_string()
                     }],

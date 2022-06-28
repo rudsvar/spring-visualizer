@@ -1,0 +1,16 @@
+digraph Components {
+    # Legend
+    "@SpringBootApplication" [fillcolor="#2c9162",style=filled];
+    "@Configuration" [fillcolor="#28a9e0",style=filled];
+    "@Controller" [fillcolor="#7050bf",style=filled];
+    "@Service" [fillcolor="#a81347",style=filled];
+    "@Repository" [fillcolor="#e06907",style=filled];
+    "@Component" [fillcolor="#ffc400",style=filled];
+
+    # Align legend
+    "@SpringBootApplication" -> "@Configuration" [style=invis];
+    "@Configuration" -> "@Controller" [style=invis];
+    "@Controller" -> "@Service" [style=invis];
+    "@Service" -> "@Repository" [style=invis];
+    "@Repository" -> "@Component" [style=invis];
+
