@@ -258,20 +258,18 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
     let mut class_builder = ClassBuilder::default();
 
     // Package declaration
-    log::debug!("Package declaration");
     let pos = input.find("package").expect("no package declaration");
     let input = &input[pos..];
     let (mut input, between) = delimited(tag("package"), is_not(";"), char(';'))(input)?;
-    class_builder.package(between.trim().to_string());
+    let package = between.trim();
+    class_builder.package(package.to_string());
 
     // Class level annotations
-    log::debug!("Class level declarations");
     if let Some(pos) = input.find('@') {
         let tmp_input = &input[pos..];
         let (new_input, annotations) = many0(parse_annotation)(tmp_input)?;
         input = new_input;
         for annotation in annotations {
-            log::debug!("Found annotation {:?}", annotation);
             match annotation.name.as_str() {
                 "Import" => {
                     let imports = annotation.value();
@@ -331,7 +329,6 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
     let (input, _) = multispace0(input)?;
     let (input, name) = take_while(|c: char| c.is_alphanumeric())(input)?;
     class_builder.name(name.to_string());
-    log::debug!("Class name {}", name);
 
     // Autowire
     let mut autowire_start = input;
@@ -369,7 +366,7 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
     class_builder.bean_defs(beans);
 
     let class = class_builder.build().unwrap();
-    log::debug!("Parsed class {:?}", class);
+    log::debug!("Parsed class\n{:#?}", class);
 
     Ok(("", class))
 }

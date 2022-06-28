@@ -40,16 +40,7 @@ fn javafiles(package: &str) -> impl Iterator<Item = DirEntry> + '_ {
     })
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    env_logger::init();
-
-    let mut args = std::env::args();
-    let executable = args.next().unwrap();
-    let dir = args
-        .next()
-        .ok_or_else(|| format!("Usage: {} <path>", executable))?;
-    println!("digraph Components {{");
-
+fn print_legend() {
     println!("    # Legend");
     for component_type in ComponentType::iter() {
         println!(
@@ -66,6 +57,19 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!(r#"    "@{:?}" -> "@{:?}" [style=invis];"#, cur, next);
     }
     println!();
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    env_logger::init();
+
+    let mut args = std::env::args();
+    let executable = args.next().unwrap();
+    let dir = args
+        .next()
+        .ok_or_else(|| format!("Usage: {} <path>", executable))?;
+    println!("digraph Components {{");
+
+    print_legend();
 
     let classes: Vec<Class> = javafiles(&dir)
         .map(|entry| {
@@ -90,25 +94,29 @@ fn main() -> Result<(), Box<dyn Error>> {
         log::debug!("{}: Imports {:?}", class.name(), class.imports());
         for import in class.imports() {
             log::debug!("Import here");
-            println!("    {} -> {} [label=imports];", class.name(), import);
+            println!("    {} -> {} [label=\"@Import\"];", class.name(), import);
         }
 
         // Component scans
         for package in class.component_scans() {
-            println!("    {} [fillcolor=\"#97de50\",style=filled];", package);
-            println!("    {} -> {} [label=scans];", class.name(), package);
+            println!("    \"{}\" [style=filled];", package);
+            println!(
+                "    \"{}\" -> \"{}\" [label=\"@ComponentScan\"];",
+                class.name(),
+                package
+            );
             let scanned = classes
                 .iter()
                 .filter(|c| c.package().contains(package) && c.component_type().is_some());
             for c in scanned {
-                println!("    {} -> {} [label=contains];", package, c.name());
+                println!("    \"{}\" -> {} [label=contains];", package, c.name());
             }
         }
 
         // Autowires
         for autowire in class.autowires() {
             println!(
-                "    {} -> {} [label=autowires];",
+                "    {} -> {} [label=\"@Autowire\"];",
                 class.name(),
                 autowire.class()
             );
@@ -117,7 +125,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         // Beans
         for bean in class.bean_defs() {
             println!(
-                "    {} -> {} [label=\"defines bean\"];",
+                "    {} -> {} [label=\"@Bean\"];",
                 class.name(),
                 bean.class()
             );
