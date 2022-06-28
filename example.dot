@@ -1,25 +1,32 @@
 digraph Components {
     # Legend
-    "@SpringBootApplication" [fillcolor="#28a9e0",style=filled];
-    "@Configuration" [fillcolor="#2c9162",style=filled];
+    "@SpringBootApplication" [fillcolor="#2c9162",style=filled];
+    "@Configuration" [fillcolor="#28a9e0",style=filled];
     "@Controller" [fillcolor="#7050bf",style=filled];
     "@Service" [fillcolor="#a81347",style=filled];
-    "@Repository" [fillcolor="#ffc400",style=filled];
-    "Directory" [fillcolor="#97de50",style=filled];
+    "@Repository" [fillcolor="#e06907",style=filled];
+    "@Component" [fillcolor="#ffc400",style=filled];
 
     # Align legend
     "@SpringBootApplication" -> "@Configuration" [style=invis];
     "@Configuration" -> "@Controller" [style=invis];
     "@Controller" -> "@Service" [style=invis];
     "@Service" -> "@Repository" [style=invis];
-    "@Repository" -> "Directory" [style=invis];
+    "@Repository" -> "@Component" [style=invis];
 
-    Scanned -> AlsoScanned [label=autowires]
-    "A" -> "B" [label="imports"];
-    "A" -> "C" [label="imports"];
-    "A" -> "scanned-dir" [label="scans"];
-    "scanned-dir" -> "AlsoScanned" [label="contains"];
-    "scanned-dir" -> "Scanned" [label="contains"];
-    A -> MyBean [label=defines]
-    "C" -> "D" [label="imports"];
+    B [fillcolor="#a81347"style=filled];
+    D [fillcolor="#e06907"style=filled];
+    A [fillcolor="#2c9162"style=filled];
+    A -> B [label=imports];
+    A -> C [label=imports];
+    scanned_dir [fillcolor="#97de50",style=filled];
+    A -> scanned_dir [label=scans];
+    scanned_dir -> AlsoScanned [label=contains];
+    scanned_dir -> Scanned [label=contains];
+    A -> MyBean [label="defines bean"];
+    AlsoScanned [fillcolor="#e06907"style=filled];
+    Scanned [fillcolor="#ffc400"style=filled];
+    Scanned -> MyBean [label=autowires];
+    C [fillcolor="#28a9e0"style=filled];
+    C -> D [label=imports];
 }

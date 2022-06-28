@@ -9,6 +9,7 @@ use nom::{
     IResult,
 };
 use std::collections::HashMap;
+use strum::EnumIter;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
@@ -38,21 +39,22 @@ impl Annotation {
     }
 }
 
-pub fn parse_single_value(input: &str) -> IResult<&str, Value> {
+pub fn parse_value(input: &str) -> IResult<&str, Value> {
     let is_string = input.starts_with('"');
-    let is_array = input.starts_with('{') && input.ends_with('}');
+    let is_array = input.starts_with('{');
     let res = if is_string {
         let (input, between) = delimited(char('"'), is_not("\""), char('"'))(input)?;
         (input, Value::String(between.to_string()))
     } else if is_array {
         let (input, between) = delimited(char('{'), is_not("}"), char('}'))(input)?;
+        let between = between.trim_start();
         let (_, values) = nom::multi::separated_list0(
             |input| {
                 let (input, _) = tag(",")(input)?;
                 let (input, _) = space0(input)?;
                 Ok((input, ()))
             },
-            parse_single_value,
+            parse_value,
         )(between)?;
         (input, Value::Array(values))
     } else {
@@ -63,14 +65,14 @@ pub fn parse_single_value(input: &str) -> IResult<&str, Value> {
     Ok(res)
 }
 
-pub fn parse_multi_value(input: &str) -> IResult<&str, HashMap<String, Value>> {
-    eprintln!("Parsing multi value from {}", input);
+pub fn parse_key_value_pairs(input: &str) -> IResult<&str, HashMap<String, Value>> {
+    log::debug!("Parsing multi value from {}", input);
     let (input, key_value_pairs) = many0(|input| {
         let (input, key) = take_while(|c: char| c.is_alphanumeric())(input)?;
         let (input, _) = space0(input)?;
         let (input, _) = tag("=")(input)?;
         let (input, _) = space0(input)?;
-        let (input, value) = parse_single_value(input)?;
+        let (input, value) = parse_value(input)?;
         let (input, _) = opt(tag(","))(input)?;
         let (input, _) = space0(input)?;
         Ok((input, (key.to_string(), value)))
@@ -82,9 +84,9 @@ pub fn parse_multi_value(input: &str) -> IResult<&str, HashMap<String, Value>> {
 
 pub fn parse_args(input: &str) -> IResult<&str, Args> {
     if input.contains('=') {
-        map(parse_multi_value, Args::Multi)(input)
+        map(parse_key_value_pairs, Args::Multi)(input)
     } else {
-        map(parse_single_value, Args::Single)(input)
+        map(parse_value, Args::Single)(input)
     }
 }
 
@@ -131,6 +133,32 @@ pub struct Bean {
     class: String,
 }
 
+impl Bean {
+    pub fn name(&self) -> &str {
+        self.name.as_ref()
+    }
+
+    pub fn class(&self) -> &str {
+        self.class.as_ref()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Autowire {
+    name: String,
+    class: String,
+}
+
+impl Autowire {
+    pub fn name(&self) -> &str {
+        self.name.as_ref()
+    }
+
+    pub fn class(&self) -> &str {
+        self.class.as_ref()
+    }
+}
+
 pub fn parse_bean(input: &str) -> IResult<&str, Bean> {
     let (input, annotation) = parse_annotation(input)?;
     // Skip visibility modifier
@@ -157,7 +185,7 @@ pub fn parse_bean(input: &str) -> IResult<&str, Bean> {
     ))
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter)]
 pub enum ComponentType {
     SpringBootApplication,
     Configuration,
@@ -165,6 +193,19 @@ pub enum ComponentType {
     Service,
     Repository,
     Component,
+}
+
+impl ComponentType {
+    pub fn color_code(&self) -> &'static str {
+        match self {
+            ComponentType::SpringBootApplication => "#2c9162",
+            ComponentType::Configuration => "#28a9e0",
+            ComponentType::Controller => "#7050bf",
+            ComponentType::Service => "#a81347",
+            ComponentType::Repository => "#e06907",
+            ComponentType::Component => "#ffc400",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Builder)]
@@ -178,41 +219,72 @@ pub struct Class {
     component_scans: Vec<String>,
     name: String,
     #[builder(default)]
-    autowires: Vec<String>,
+    autowires: Vec<Autowire>,
     #[builder(default)]
     bean_defs: Vec<Bean>,
+}
+
+impl Class {
+    pub fn package(&self) -> &str {
+        self.package.as_ref()
+    }
+
+    pub fn component_type(&self) -> Option<&ComponentType> {
+        self.component_type.as_ref()
+    }
+
+    pub fn imports(&self) -> &[String] {
+        self.imports.as_ref()
+    }
+
+    pub fn component_scans(&self) -> &[String] {
+        self.component_scans.as_ref()
+    }
+
+    pub fn name(&self) -> &str {
+        self.name.as_ref()
+    }
+
+    pub fn autowires(&self) -> &[Autowire] {
+        self.autowires.as_ref()
+    }
+
+    pub fn bean_defs(&self) -> &[Bean] {
+        self.bean_defs.as_ref()
+    }
 }
 
 pub fn parse_class(input: &str) -> IResult<&str, Class> {
     let mut class_builder = ClassBuilder::default();
 
     // Package declaration
-    eprintln!("Package declaration");
+    log::debug!("Package declaration");
     let pos = input.find("package").expect("no package declaration");
     let input = &input[pos..];
     let (mut input, between) = delimited(tag("package"), is_not(";"), char(';'))(input)?;
     class_builder.package(between.trim().to_string());
 
     // Class level annotations
-    eprintln!("Class level declarations");
+    log::debug!("Class level declarations");
     if let Some(pos) = input.find('@') {
         let tmp_input = &input[pos..];
         let (new_input, annotations) = many0(parse_annotation)(tmp_input)?;
         input = new_input;
         for annotation in annotations {
+            log::debug!("Found annotation {:?}", annotation);
             match annotation.name.as_str() {
                 "Import" => {
                     let imports = annotation.value();
                     match imports {
                         Some(Value::Class(import)) => class_builder.imports(vec![import.clone()]),
                         Some(Value::Array(values)) => {
-                            let mut paths = Vec::new();
+                            let mut classes = Vec::new();
                             for v in values {
-                                if let Value::String(path) = v {
-                                    paths.push(path.clone());
+                                if let Value::Class(class) = v {
+                                    classes.push(class.clone());
                                 }
                             }
-                            class_builder.imports(paths)
+                            class_builder.imports(classes)
                         }
                         _ => &mut class_builder,
                     }
@@ -254,19 +326,19 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
     }
 
     // Class name
-    eprintln!("Class name");
     let class_start = input.find("class").expect("no class name");
     let input = &input[class_start + "class".len()..];
     let (input, _) = multispace0(input)?;
     let (input, name) = take_while(|c: char| c.is_alphanumeric())(input)?;
     class_builder.name(name.to_string());
+    log::debug!("Class name {}", name);
 
     // Autowire
     let mut autowire_start = input;
     let mut autowires = Vec::new();
     while let Some(pos) = autowire_start.find("@Autowire") {
         autowire_start = &autowire_start[pos..];
-        let (input, (class, _)) = delimited(
+        let (input, (class, name)) = delimited(
             tag("@Autowire"),
             |input| {
                 let (input, _) = multispace0(input)?;
@@ -277,7 +349,10 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
             },
             char(';'),
         )(autowire_start)?;
-        autowires.push(class.to_string());
+        autowires.push(Autowire {
+            class: class.to_string(),
+            name: name.to_string(),
+        });
         autowire_start = input;
     }
     class_builder.autowires(autowires);
@@ -293,14 +368,17 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
     }
     class_builder.bean_defs(beans);
 
-    Ok(("", class_builder.build().unwrap()))
+    let class = class_builder.build().unwrap();
+    log::debug!("Parsed class {:?}", class);
+
+    Ok(("", class))
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        parse_annotation, parse_bean, parse_class, Annotation, Args, Bean, Class, ComponentType,
-        Value,
+        parse_annotation, parse_bean, parse_class, Annotation, Args, Autowire, Bean, Class,
+        ComponentType, Value,
     };
 
     #[test]
@@ -417,7 +495,10 @@ mod tests {
                     imports: vec!["Bar".to_string()],
                     component_scans: vec!["a.b.c".to_string()],
                     name: "Foo".to_string(),
-                    autowires: vec!["Foo".to_string()],
+                    autowires: vec![Autowire {
+                        class: "Foo".to_string(),
+                        name: "foo".to_string()
+                    }],
                     bean_defs: vec![Bean {
                         name: "myBean".to_string(),
                         class: "MyBean".to_string()
