@@ -39,6 +39,8 @@ fn javafiles(package: &str) -> impl Iterator<Item = DirEntry> + '_ {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    env_logger::init();
+
     let mut args = std::env::args();
     let executable = args.next().unwrap();
     let dir = args
