@@ -1,7 +1,9 @@
 use nom::{
     bytes::complete::is_not,
     bytes::complete::{tag, take_until, take_while},
-    character::complete::char,
+    character::complete::{char, space0},
+    combinator::opt,
+    multi::many0,
     sequence::delimited,
     IResult,
 };
@@ -32,9 +34,7 @@ pub struct Annotation {
     values: Values,
 }
 
-pub fn parse_value(input: &str) -> IResult<&str, Value> {
-    eprintln!("Parsing value from {}", input);
-    let input = input.trim_start();
+pub fn parse_single_value(input: &str) -> IResult<&str, Value> {
     let is_string = input.starts_with('"');
     let is_array = input.starts_with('{') && input.ends_with('}');
     let res = if is_string {
@@ -42,7 +42,14 @@ pub fn parse_value(input: &str) -> IResult<&str, Value> {
         (input, Value::String(between.to_string()))
     } else if is_array {
         let (input, between) = delimited(char('{'), is_not("}"), char('}'))(input)?;
-        let (_, values) = nom::multi::separated_list0(tag(","), parse_value)(between)?;
+        let (_, values) = nom::multi::separated_list0(
+            |input| {
+                let (input, _) = tag(",")(input)?;
+                let (input, _) = space0(input)?;
+                Ok((input, ()))
+            },
+            parse_single_value,
+        )(between)?;
         (input, Value::Array(values))
     } else {
         let (input, name) = take_until(".class")(input)?;
@@ -52,17 +59,45 @@ pub fn parse_value(input: &str) -> IResult<&str, Value> {
     Ok(res)
 }
 
+pub fn parse_multi_value(input: &str) -> IResult<&str, HashMap<String, Value>> {
+    eprintln!("Parsing multi value from {}", input);
+    let (input, key_value_pairs) = many0(|input| {
+        let (input, key) = take_while(|c: char| c.is_alphanumeric())(input)?;
+        let (input, _) = space0(input)?;
+        let (input, _) = tag("=")(input)?;
+        let (input, _) = space0(input)?;
+        let (input, value) = parse_single_value(input)?;
+        let (input, _) = opt(tag(","))(input)?;
+        let (input, _) = space0(input)?;
+        eprintln!("Got single value {value:?}");
+        Ok((input, (key.to_string(), value)))
+    })(input)?;
+    dbg!(&key_value_pairs);
+    let values = key_value_pairs.into_iter().collect();
+    Ok((input, values))
+}
+
+pub fn parse_values(input: &str) -> IResult<&str, Values> {
+    if input.contains('=') {
+        let (input, vs) = parse_multi_value(input)?;
+        Ok((input, Values::Multi(vs)))
+    } else {
+        let (input, v) = parse_single_value(input)?;
+        Ok((input, Values::Single(v)))
+    }
+}
+
 pub fn parse_annotation(input: &str) -> IResult<&str, Annotation> {
     let (input, _) = tag("@")(input)?;
     let (input, name) = take_while(|c: char| c.is_alphanumeric())(input)?;
     let (input, between) = delimited(char('('), is_not(")"), char(')'))(input)?;
-    let (_, value) = parse_value(between)?;
+    let (_, values) = parse_values(between)?;
 
     Ok((
         input,
         Annotation {
             name: name.to_string(),
-            values: Values::Single(value),
+            values,
         },
     ))
 }
@@ -113,6 +148,36 @@ mod tests {
                 }
             )),
             parse_annotation("@MyAnnotation({\"com.example\", Foo.class})")
+        );
+    }
+
+    #[test]
+    pub fn parse_annotation_with_key_value_pairs_succeeds() {
+        assert_eq!(
+            Ok((
+                "",
+                Annotation {
+                    name: "MyAnnotation".to_string(),
+                    values: Values::Multi(
+                        vec![
+                            ("foo".to_string(), Value::Class("Foo".to_string())),
+                            ("bar".to_string(), Value::String("com.example".to_string())),
+                            (
+                                "baz".to_string(),
+                                Value::Array(vec![
+                                    Value::Class("A".to_string()),
+                                    Value::Class("B".to_string())
+                                ])
+                            )
+                        ]
+                        .into_iter()
+                        .collect()
+                    )
+                }
+            )),
+            parse_annotation(
+                "@MyAnnotation(foo = Foo.class, bar = \"com.example\", baz = {A.class, B.class})"
+            )
         );
     }
 }
