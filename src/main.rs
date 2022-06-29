@@ -1,4 +1,5 @@
 use clap::Parser;
+use ignore::{DirEntry, Walk};
 use itertools::Itertools;
 use spring_visualizer::{
     class::{parse_class, Class},
@@ -14,7 +15,6 @@ use std::{
     str::FromStr,
 };
 use strum::{EnumIter, IntoEnumIterator};
-use walkdir::{DirEntry, WalkDir};
 
 fn read_file(path: &Path) -> Result<String, Box<dyn Error>> {
     // Read file contents
@@ -26,24 +26,23 @@ fn read_file(path: &Path) -> Result<String, Box<dyn Error>> {
 }
 
 fn javafiles(package: &str) -> impl Iterator<Item = DirEntry> + '_ {
-    WalkDir::new(".").into_iter().filter_map(move |entry| {
-        let entry = entry.unwrap();
-        let path = entry.path();
-        if !path.is_file() {
-            return None;
-        }
+    Walk::new("./")
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(move |entry| {
+            let path = entry.path();
+            if !path.is_file() {
+                return false;
+            }
 
-        let ext = entry.path().extension();
-        let java_ext = OsString::from_str("java").unwrap();
-        let is_java = ext == Some(&java_ext);
+            let ext = entry.path().extension();
+            let java_ext = OsString::from_str("java").unwrap();
+            let is_java = ext == Some(&java_ext);
 
-        let is_right_package = path.to_str().unwrap().contains(package);
-        if is_java && is_right_package {
-            Some(entry)
-        } else {
-            None
-        }
-    })
+            let is_right_package = path.to_str().unwrap().contains(package);
+
+            is_java && is_right_package
+        })
 }
 
 fn print_legend() {
