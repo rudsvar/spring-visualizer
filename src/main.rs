@@ -1,6 +1,9 @@
 use clap::Parser;
 use itertools::Itertools;
-use spring_visualizer::{Class, ComponentType};
+use spring_visualizer::{
+    class::{parse_class, Class},
+    component_type::ComponentType,
+};
 use std::{
     error::Error,
     ffi::OsString,
@@ -150,8 +153,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let classes: Vec<Class> = javafiles(&args.path)
         .map(|entry| {
             let content = read_file(entry.path()).expect("failed to read file");
-            let (_, class) =
-                spring_visualizer::parse_class(&content).expect("failed to parse class");
+            let (_, class) = parse_class(&content).expect("failed to parse class");
             class
         })
         .collect();

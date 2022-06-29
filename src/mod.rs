@@ -1,3 +1,5 @@
+//! Parsers for various annotations.
+
 pub mod annotation;
 pub mod autowired;
 pub mod bean;
