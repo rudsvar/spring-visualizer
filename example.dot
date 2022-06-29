@@ -17,14 +17,17 @@ digraph Components {
     DemoApplication [fillcolor="#2c9162"style=filled];
     DemoApplication -> ServiceConfig [label="@Import"];
     BarService [fillcolor="#a81347"style=filled];
+    BarService -> MyBean [label="@Autowired"];
     FooService [fillcolor="#a81347"style=filled];
-    FooService -> FooRepository [label="@Autowire"];
+    FooService -> MissingBean [label="@Autowired"];
+    FooService -> FooRepository [label="@Autowired"];
     ServiceConfig [fillcolor="#28a9e0"style=filled];
     ServiceConfig -> DaoConfig [label="@Import"];
     "com.example.demo.service" [style=filled];
     "ServiceConfig" -> "com.example.demo.service" [label="@ComponentScan"];
     "com.example.demo.service" -> BarService [label=contains];
     "com.example.demo.service" -> FooService [label=contains];
+    MyBean [fillcolor="#6b1d1d",style=filled];
     ServiceConfig -> MyBean [label="@Bean"];
     BarRepository [fillcolor="#e06907"style=filled];
     FooRepository [fillcolor="#e06907"style=filled];

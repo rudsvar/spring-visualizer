@@ -7,6 +7,10 @@ import com.example.demo.repository.FooRepository;
 
 @Service
 public class FooService {
+
+    @Autowired
+    MissingBean missingBean;
+
     @Autowired
     FooRepository fooRepository;
 }
