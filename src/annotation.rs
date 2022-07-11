@@ -53,7 +53,6 @@ pub fn parse_key_value_pairs(input: &str) -> IResult<&str, HashMap<String, Annot
         let (input, _) = space0(input)?;
         Ok((input, (key.to_string(), value)))
     })(input)?;
-    dbg!(&key_value_pairs);
     let values = key_value_pairs.into_iter().collect();
     Ok((input, values))
 }
