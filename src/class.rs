@@ -7,6 +7,7 @@ use derive_builder::Builder;
 use nom::{
     bytes::complete::{is_not, tag, take_while},
     character::complete::{alphanumeric1, char, multispace0},
+    error::ErrorKind,
     multi::many0,
     sequence::delimited,
     IResult,
@@ -62,7 +63,9 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
     let mut class_builder = ClassBuilder::default();
 
     // Package declaration
-    let pos = input.find("package").expect("no package declaration");
+    let pos = input
+        .find("package")
+        .ok_or_else(|| nom::Err::Failure(nom::error::make_error(input, ErrorKind::Fail)))?;
     let input = &input[pos..];
     let (mut input, between) = delimited(tag("package"), is_not(";"), char(';'))(input)?;
     let package = between.trim();
@@ -130,7 +133,9 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
     }
 
     // Class name
-    let class_start = input.find("class").expect("no class name");
+    let class_start = input
+        .find("class")
+        .ok_or_else(|| nom::Err::Failure(nom::error::make_error(input, ErrorKind::Fail)))?;
     let input = &input[class_start + "class".len()..];
     let (input, _) = multispace0(input)?;
     let (input, name) = take_while(|c: char| c.is_alphanumeric())(input)?;
@@ -168,7 +173,9 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
     }
     class_builder.bean_defs(beans);
 
-    let class = class_builder.build().unwrap();
+    let class = class_builder
+        .build()
+        .expect("should have been built correctly");
     log::trace!("Parsed class\n{:#?}", class);
 
     Ok(("", class))

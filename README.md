@@ -21,9 +21,9 @@ Spring visualizer produces a graph of the application context based on your Java
 If you run the command below
 
 ```
-cargo run -- com/example/demo > example.dot && dot -Tpng example.dot -o example.png
+RUST_LOG=spring_visualizer=debug cargo run -- com/example/demo > demo/example.dot && dot -Tpng demo/example.dot -o demo/example.png
 ```
 
 then you will get the following output:
 
-![](./example.png)
+![](./demo/example.png)
