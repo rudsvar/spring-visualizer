@@ -169,7 +169,7 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
     class_builder.bean_defs(beans);
 
     let class = class_builder.build().unwrap();
-    log::debug!("Parsed class\n{:#?}", class);
+    log::trace!("Parsed class\n{:#?}", class);
 
     Ok(("", class))
 }

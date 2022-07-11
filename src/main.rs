@@ -150,10 +150,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     print_legend();
 
     let classes: Vec<Class> = javafiles(&args.path)
-        .map(|entry| {
-            let content = read_file(entry.path()).expect("failed to read file");
-            let (_, class) = parse_class(&content).expect("failed to parse class");
-            class
+        .filter_map(|entry| {
+            let file_name = entry.file_name();
+            log::debug!("Reading file {:?}", file_name);
+            let content = read_file(entry.path()).ok().or_else(|| {
+                log::warn!("Failed to read file {:?}", file_name);
+                None
+            })?;
+            let (_, class) = parse_class(&content).ok().or_else(|| {
+                log::warn!("Failed to parse file {:?}", file_name);
+                None
+            })?;
+            Some(class)
         })
         .collect();
 
@@ -169,9 +177,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         // Imports
         if args.features.contains(&Feature::Import) {
-            log::debug!("{}: Imports {:?}", class.name(), class.imports());
+            log::trace!("{}: Imports {:?}", class.name(), class.imports());
             for import in class.imports() {
-                log::debug!("Import here");
+                log::trace!("Import here");
                 println!("    {} -> {} [label=\"@Import\"];", class.name(), import);
             }
         }
