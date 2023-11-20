@@ -232,6 +232,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                     class.name(),
                     bean.class()
                 );
+                // Print bean parameters
+                for param in bean.parameters().iter() {
+                    dbg!(param);
+                    println!("    {} -> {} [label=\"@Bean\"];", bean.class(), param.class);
+                }
             }
         }
     }

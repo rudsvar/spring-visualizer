@@ -35,6 +35,10 @@ impl Bean {
     pub fn class(&self) -> &str {
         self.class.as_ref()
     }
+
+    pub fn parameters(&self) -> &[Parameter] {
+        self.parameters.as_ref()
+    }
 }
 
 pub fn parse_bean(input: &str) -> IResult<&str, Bean> {
@@ -53,24 +57,29 @@ pub fn parse_bean(input: &str) -> IResult<&str, Bean> {
     let (input, _) = tag("(")(input)?;
     let (input, _) = multispace0(input)?;
     let (input, params) = take_while(|c: char| c != ')')(input)?;
-    let params: Vec<Parameter> = params
-        .trim_end_matches(')')
-        .split(',')
-        .filter_map(|def| {
-            let def = def.trim();
-            let (input, class) =
-                take_while::<_, _, nom::error::Error<_>>(|c: char| c.is_alphanumeric())(def)
-                    .ok()?;
-            let (input, _) = multispace0::<_, nom::error::Error<_>>(input).ok()?;
-            let (_, name) =
-                take_while::<_, _, nom::error::Error<_>>(|c: char| c.is_alphanumeric())(input)
-                    .ok()?;
-            Some(Parameter {
-                name: name.to_string(),
-                class: class.to_string(),
+    let params = params.trim_end_matches(')').trim();
+    let params: Vec<Parameter> = if !params.is_empty() {
+        params
+            .trim_end_matches(')')
+            .split(',')
+            .filter_map(|def| {
+                let def = def.trim();
+                let (input, class) =
+                    take_while::<_, _, nom::error::Error<_>>(|c: char| c.is_alphanumeric())(def)
+                        .ok()?;
+                let (input, _) = multispace0::<_, nom::error::Error<_>>(input).ok()?;
+                let (_, name) =
+                    take_while::<_, _, nom::error::Error<_>>(|c: char| c.is_alphanumeric())(input)
+                        .ok()?;
+                Some(Parameter {
+                    name: name.to_string(),
+                    class: class.to_string(),
+                })
             })
-        })
-        .collect();
+            .collect()
+    } else {
+        vec![]
+    };
     // See if name has been overridden
     let overriden_name = match annotation.value() {
         Some(AnnotationArg::String(name)) => Some(name.clone()),
@@ -92,6 +101,21 @@ mod tests {
 
     #[test]
     pub fn parse_bean_succeeds() {
+        assert_eq!(
+            Ok((
+                ") { ... }",
+                Bean {
+                    name: "myBean".to_string(),
+                    class: "MyBean".to_string(),
+                    parameters: vec![]
+                }
+            )),
+            parse_bean("@Bean\n    private MyBean myBean( ) { ... }")
+        );
+    }
+
+    #[test]
+    pub fn parse_bean_succeeds2() {
         assert_eq!(
             Ok((
                 ") { ... }",
