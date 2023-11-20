@@ -1,7 +1,9 @@
+use std::str::FromStr;
+
 use super::{autowired::Autowired, bean::Bean, component_type::ComponentType};
 use crate::{
     annotation::{parse_annotation, AnnotationArg},
-    bean::parse_bean,
+    bean::{parse_bean, Parameter},
 };
 use derive_builder::Builder;
 use nom::{
@@ -23,6 +25,8 @@ pub struct Class {
     #[builder(default)]
     component_scans: Vec<String>,
     name: String,
+    #[builder(default)]
+    parameters: Vec<Parameter>,
     #[builder(default)]
     autowires: Vec<Autowired>,
     #[builder(default)]
@@ -50,6 +54,10 @@ impl Class {
         self.name.as_ref()
     }
 
+    pub fn parameters(&self) -> &[Parameter] {
+        self.parameters.as_ref()
+    }
+
     pub fn autowires(&self) -> &[Autowired] {
         self.autowires.as_ref()
     }
@@ -57,6 +65,26 @@ impl Class {
     pub fn bean_defs(&self) -> &[Bean] {
         self.bean_defs.as_ref()
     }
+}
+
+pub fn parse_constructor(class_name: &str, body: &str) -> Option<Vec<Parameter>> {
+    let pos = body.find(&format!("{}(", class_name))?;
+    let body = &body[pos + class_name.len()..];
+
+    let body = body.trim_start_matches('(');
+    let (_, params) = take_while::<_, _, nom::error::Error<_>>(|c: char| c != ')')(body).ok()?;
+    let params = params.trim_end_matches(')').trim();
+    let params: Vec<Parameter> = if !params.is_empty() {
+        params
+            .trim_end_matches(')')
+            .split(',')
+            .filter_map(|p| Parameter::from_str(p).ok())
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    Some(params)
 }
 
 pub fn parse_class(input: &str) -> IResult<&str, Class> {
@@ -141,6 +169,12 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
     let (input, name) = take_while(|c: char| c.is_alphanumeric())(input)?;
     class_builder.name(name.to_string());
 
+    // Find constructor
+    let parameters = parse_constructor(name, input);
+    if let Some(parameters) = parameters {
+        class_builder.parameters(parameters);
+    }
+
     // Autowire
     let mut autowire_start = input;
     let mut autowires = Vec::new();
@@ -183,12 +217,16 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
 
 #[cfg(test)]
 mod tests {
+    use std::vec;
+
     use crate::{
         autowired::Autowired,
         bean::{Bean, Parameter},
         class::{parse_class, Class},
         component_type::ComponentType,
     };
+
+    use super::parse_constructor;
 
     #[test]
     pub fn parse_class_test() {
@@ -201,8 +239,19 @@ mod tests {
                     imports: vec!["Bar".to_string()],
                     component_scans: vec!["a.b.c".to_string()],
                     name: "Foo".to_string(),
+                    parameters: vec![Parameter {
+                        class: "Arg".to_string(),
+                        name: "arg".to_string()
+                    }],
                     autowires: vec![Autowired::new("Foo".to_string(), "foo".to_string())],
-                    bean_defs: vec![Bean::new("MyBean".to_string(), "myBean".to_string(), vec![Parameter { class: "FooBean".to_string(), name: "fooBean".to_string() }])],
+                    bean_defs: vec![Bean::new(
+                        "MyBean".to_string(),
+                        "myBean".to_string(),
+                        vec![Parameter {
+                            class: "FooBean".to_string(),
+                            name: "fooBean".to_string()
+                        }]
+                    )],
                 }
             )),
             parse_class(
@@ -216,9 +265,36 @@ mod tests {
                     @Autowired Foo foo;
                     @Bean
                     public MyBean myBean(FooBean fooBean) { ... }
+
+                    Foo(Arg arg) {}
                 }
                 "#
             )
         );
+    }
+
+    #[test]
+    fn parse_constructor_works() {
+        let body = r#"
+            // Docs with Foo?
+            public or something Foo(Bar bar, Baz baz) {
+                // stuff
+            }
+        "#;
+        let class_name = "Foo";
+        let params = parse_constructor(class_name, body).unwrap();
+        assert_eq!(
+            vec![
+                Parameter {
+                    class: "Bar".to_string(),
+                    name: "bar".to_string(),
+                },
+                Parameter {
+                    class: "Baz".to_string(),
+                    name: "baz".to_string(),
+                }
+            ],
+            params
+        )
     }
 }

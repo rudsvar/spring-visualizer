@@ -80,6 +80,7 @@ pub enum Feature {
     ComponentScan,
     Autowired,
     Bean,
+    ConstructorInjection,
 }
 
 impl Display for Feature {
@@ -212,6 +213,17 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
 
+        // Constructor injection
+        if args.features.contains(&Feature::ConstructorInjection) {
+            for param in class.parameters() {
+                println!(
+                    "    {} -> {} [label=\"@Autowired (CI)\"];",
+                    class.name(),
+                    param.class
+                );
+            }
+        }
+
         // Autowires
         if args.features.contains(&Feature::Autowired) {
             for autowire in class.autowires() {
@@ -233,9 +245,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                     bean.class()
                 );
                 // Print bean parameters
-                for param in bean.parameters().iter() {
-                    dbg!(param);
-                    println!("    {} -> {} [label=\"@Bean\"];", bean.class(), param.class);
+                if args.features.contains(&Feature::ConstructorInjection) {
+                    for param in bean.parameters().iter() {
+                        println!(
+                            "    {} -> {} [label=\"@Autowired (CI)\"];",
+                            bean.class(),
+                            param.class
+                        );
+                    }
                 }
             }
         }
