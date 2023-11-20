@@ -185,7 +185,7 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
 mod tests {
     use crate::{
         autowired::Autowired,
-        bean::Bean,
+        bean::{Bean, Parameter},
         class::{parse_class, Class},
         component_type::ComponentType,
     };
@@ -202,7 +202,7 @@ mod tests {
                     component_scans: vec!["a.b.c".to_string()],
                     name: "Foo".to_string(),
                     autowires: vec![Autowired::new("Foo".to_string(), "foo".to_string())],
-                    bean_defs: vec![Bean::new("MyBean".to_string(), "myBean".to_string())],
+                    bean_defs: vec![Bean::new("MyBean".to_string(), "myBean".to_string(), vec![Parameter { class: "FooBean".to_string(), name: "fooBean".to_string() }])],
                 }
             )),
             parse_class(
@@ -215,7 +215,7 @@ mod tests {
                 public class Foo {
                     @Autowired Foo foo;
                     @Bean
-                    public MyBean myBean() { ... }
+                    public MyBean myBean(FooBean fooBean) { ... }
                 }
                 "#
             )

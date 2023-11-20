@@ -11,11 +11,22 @@ use super::annotation::{parse_annotation, AnnotationArg};
 pub struct Bean {
     name: String,
     class: String,
+    parameters: Vec<Parameter>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Parameter {
+    pub name: String,
+    pub class: String,
 }
 
 impl Bean {
-    pub fn new(class: String, name: String) -> Self {
-        Bean { class, name }
+    pub fn new(class: String, name: String, parameters: Vec<Parameter>) -> Self {
+        Bean {
+            class,
+            name,
+            parameters,
+        }
     }
     pub fn name(&self) -> &str {
         self.name.as_ref()
@@ -38,6 +49,28 @@ pub fn parse_bean(input: &str) -> IResult<&str, Bean> {
     let (input, _) = multispace0(input)?;
     // Get method name
     let (input, name) = take_while(|c: char| c.is_alphanumeric())(input)?;
+    // Get parameters
+    let (input, _) = tag("(")(input)?;
+    let (input, _) = multispace0(input)?;
+    let (input, params) = take_while(|c: char| c != ')')(input)?;
+    let params: Vec<Parameter> = params
+        .trim_end_matches(')')
+        .split(',')
+        .filter_map(|def| {
+            let def = def.trim();
+            let (input, class) =
+                take_while::<_, _, nom::error::Error<_>>(|c: char| c.is_alphanumeric())(def)
+                    .ok()?;
+            let (input, _) = multispace0::<_, nom::error::Error<_>>(input).ok()?;
+            let (_, name) =
+                take_while::<_, _, nom::error::Error<_>>(|c: char| c.is_alphanumeric())(input)
+                    .ok()?;
+            Some(Parameter {
+                name: name.to_string(),
+                class: class.to_string(),
+            })
+        })
+        .collect();
     // See if name has been overridden
     let overriden_name = match annotation.value() {
         Some(AnnotationArg::String(name)) => Some(name.clone()),
@@ -48,25 +81,30 @@ pub fn parse_bean(input: &str) -> IResult<&str, Bean> {
         Bean {
             name: overriden_name.unwrap_or_else(|| name.to_string()),
             class: class.to_string(),
+            parameters: params,
         },
     ))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::bean::{parse_bean, Bean};
+    use crate::bean::{parse_bean, Bean, Parameter};
 
     #[test]
     pub fn parse_bean_succeeds() {
         assert_eq!(
             Ok((
-                "() { ... }",
+                ") { ... }",
                 Bean {
                     name: "myBean".to_string(),
                     class: "MyBean".to_string(),
+                    parameters: vec![Parameter {
+                        name: "fooBean".to_string(),
+                        class: "FooBean".to_string()
+                    }]
                 }
             )),
-            parse_bean("@Bean\n    private MyBean myBean() { ... }")
+            parse_bean("@Bean\n    private MyBean myBean(FooBean fooBean) { ... }")
         );
     }
 
@@ -74,13 +112,17 @@ mod tests {
     pub fn parse_bean_with_name_succeeds() {
         assert_eq!(
             Ok((
-                "() { ... }",
+                ") { ... }",
                 Bean {
                     name: "newName".to_string(),
                     class: "MyBean".to_string(),
+                    parameters: vec![Parameter {
+                        name: "fooBean".to_string(),
+                        class: "FooBean".to_string()
+                    }]
                 }
             )),
-            parse_bean("@Bean(\"newName\")\n    private MyBean myBean() { ... }")
+            parse_bean("@Bean(\"newName\")\n    private MyBean myBean(FooBean fooBean) { ... }")
         );
     }
 }
