@@ -18,7 +18,7 @@ use strum::{EnumIter, IntoEnumIterator};
 
 fn read_file(path: &Path) -> Result<String, Box<dyn Error>> {
     // Read file contents
-    let f = File::open(&path)?;
+    let f = File::open(path)?;
     let mut f = BufReader::new(f);
     let mut buf = String::new();
     f.read_to_string(&mut buf)?;
@@ -27,7 +27,6 @@ fn read_file(path: &Path) -> Result<String, Box<dyn Error>> {
 
 fn javafiles(package: &str) -> impl Iterator<Item = DirEntry> + '_ {
     Walk::new("./")
-        .into_iter()
         .filter_map(|e| e.ok())
         .filter_map(move |entry| {
             // Entry must be a file
@@ -99,7 +98,7 @@ impl FromStr for Feature {
                 return Ok(feature);
             }
         }
-        return Err(format!("unknown feature {}", input));
+        Err(format!("unknown feature {}", input))
     }
 }
 
