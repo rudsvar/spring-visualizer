@@ -15,6 +15,7 @@ use std::{
     str::FromStr,
 };
 use strum::{EnumIter, IntoEnumIterator};
+use tracing_subscriber::EnvFilter;
 
 fn read_file(path: &Path) -> Result<String, Box<dyn Error>> {
     // Read file contents
@@ -42,7 +43,7 @@ fn javafiles(package: &str) -> impl Iterator<Item = DirEntry> + '_ {
 
             // Path must contain user search
             let path = path.to_str().or_else(|| {
-                log::warn!("Path is not valid UTF-8: {:?}", path);
+                tracing::warn!("Path is not valid UTF-8: {:?}", path);
                 None
             })?;
             let is_right_package = path.contains(package);
@@ -152,7 +153,10 @@ pub struct Args {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    env_logger::init();
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
 
     let args = Args::parse();
 
@@ -163,13 +167,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     let classes: Vec<Class> = javafiles(&args.path)
         .filter_map(|entry| {
             let file_name = entry.file_name();
-            log::debug!("Reading file {:?}", file_name);
+            tracing::debug!("Reading file {:?}", file_name);
             let content = read_file(entry.path()).ok().or_else(|| {
-                log::warn!("Failed to read file {:?}", file_name);
+                tracing::warn!("Failed to read file {:?}", file_name);
                 None
             })?;
             let (_, class) = parse_class(&content).ok().or_else(|| {
-                log::warn!("Failed to parse file {:?}", file_name);
+                tracing::warn!("Failed to parse file {:?}", file_name);
                 None
             })?;
             Some(class)
@@ -188,9 +192,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         // Imports
         if args.features.contains(&Feature::Import) {
-            log::trace!("{}: Imports {:?}", class.name(), class.imports());
+            tracing::trace!("{}: Imports {:?}", class.name(), class.imports());
             for import in class.imports() {
-                log::trace!("Import here");
+                tracing::trace!("Import here");
                 println!("    {} -> {} [label=\"@Import\"];", class.name(), import);
             }
         }

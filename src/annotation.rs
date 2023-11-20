@@ -42,7 +42,7 @@ pub fn parse_arg(input: &str) -> IResult<&str, AnnotationArg> {
 }
 
 pub fn parse_key_value_pairs(input: &str) -> IResult<&str, HashMap<String, AnnotationArg>> {
-    log::debug!("Parsing multi value from {}", input);
+    tracing::debug!("Parsing multi value from {}", input);
     let (input, key_value_pairs) = many0(|input| {
         let (input, key) = take_while(|c: char| c.is_alphanumeric())(input)?;
         let (input, _) = space0(input)?;

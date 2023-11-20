@@ -210,7 +210,7 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
     let class = class_builder
         .build()
         .expect("should have been built correctly");
-    log::trace!("Parsed class\n{:#?}", class);
+    tracing::trace!("Parsed class\n{:#?}", class);
 
     Ok(("", class))
 }
