@@ -14,7 +14,7 @@ Spring visualizer produces a graph of the application context based on your Java
 3. Overview of
    - autowired dependencies of components, and
    - warnings when they are not component-scanned components or defined as beans. (TODO)
-4. Configuration of what to include in the final graph with clap. (TODO)
+4. Configuration of what to include in the final graph with clap.
 
 ## Example
 
