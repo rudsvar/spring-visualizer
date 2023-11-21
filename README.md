@@ -38,7 +38,7 @@ spring-visualizer -h
 If you run the command below
 
 ```sh
-spring-visualizer com/example/demo > demo/example.dot && dot -Tpng demo/example.dot -o demo/example.png
+spring-visualizer com/example/demo | dot -Tpng -o demo/example.png
 ```
 
 then you will get the following output:
