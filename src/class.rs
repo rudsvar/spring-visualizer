@@ -31,6 +31,8 @@ pub struct Class {
     autowires: Vec<Autowired>,
     #[builder(default)]
     bean_defs: Vec<Bean>,
+    #[builder(default)]
+    interfaces: Vec<String>,
 }
 
 impl Class {
@@ -64,6 +66,10 @@ impl Class {
 
     pub fn bean_defs(&self) -> &[Bean] {
         self.bean_defs.as_ref()
+    }
+
+    pub fn interfaces(&self) -> &[String] {
+        self.interfaces.as_ref()
     }
 }
 
@@ -124,9 +130,7 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
                         _ => &mut class_builder,
                     }
                 }
-                "SpringBootApplication" => {
-                    class_builder.component_scans(vec![package.to_string()])
-                }
+                "SpringBootApplication" => class_builder.component_scans(vec![package.to_string()]),
                 "ComponentScan" => {
                     let imports = annotation.value();
                     match imports {
@@ -175,6 +179,19 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
     let (input, _) = multispace0(input)?;
     let (input, name) = take_while(|c: char| c.is_alphanumeric())(input)?;
     class_builder.name(name.to_string());
+
+    // Find interfaces this class extends
+    let interfaces_start = input.find("implements");
+    if let Some(pos) = interfaces_start {
+        let input = &input[pos + "implements".len()..];
+        let (input, _) = multispace0(input)?;
+        let (_, interfaces) = take_while(|c: char| c.is_alphanumeric())(input)?;
+        let interfaces = interfaces
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect();
+        class_builder.interfaces(interfaces);
+    }
 
     // Find constructor
     let parameters = parse_constructor(name, input);
@@ -259,6 +276,7 @@ mod tests {
                             name: "fooBean".to_string()
                         }]
                     )],
+                    interfaces: vec!["IFoo".to_string()]
                 }
             )),
             parse_class(
@@ -268,7 +286,7 @@ mod tests {
                 @Component
                 @Import(Bar.class)
                 @ComponentScan("a.b.c")
-                public class Foo {
+                public class Foo implements IFoo {
                     @Autowired Foo foo;
                     @Bean
                     public MyBean myBean(FooBean fooBean) { ... }

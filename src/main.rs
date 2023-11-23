@@ -82,6 +82,7 @@ pub enum Feature {
     Autowired,
     Bean,
     ConstructorInjection,
+    CombineImplAndInterface,
 }
 
 impl Display for Feature {
@@ -143,13 +144,53 @@ impl FromStr for Features {
     }
 }
 
+fn default_features() -> Features {
+    Features {
+        features: Feature::iter()
+            .filter(|f| f != &Feature::ComponentScan)
+            .collect(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Parser)]
+enum Direction {
+    /// Left to right.
+    LeftToRight,
+    /// Top to bottom.
+    TopToBottom,
+}
+
+impl ToString for Direction {
+    fn to_string(&self) -> String {
+        match self {
+            Direction::LeftToRight => "LR".to_string(),
+            Direction::TopToBottom => "TB".to_string(),
+        }
+    }
+}
+
+impl FromStr for Direction {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "LR" => Ok(Direction::LeftToRight),
+            "RB" => Ok(Direction::TopToBottom),
+            _ => Err(format!("unknown direction {}", s)),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Parser)]
 pub struct Args {
-    /// Directories to scan for files.
+    /// Directory filter.
     path: String,
     /// Kinds of relations to include.
-    #[clap(short, long, default_value_t)]
+    #[clap(short, long, default_value_t = default_features())]
     features: Features,
+    /// Direction of the graph (left to right or top to bottom).
+    #[clap(short, long, default_value_t = Direction::LeftToRight)]
+    direction: Direction,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -161,7 +202,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
     println!("digraph Components {{");
-    println!("    rankdir=LR;");
+    println!("    rankdir={};", args.direction.to_string());
 
     print_legend();
 
@@ -182,24 +223,34 @@ fn main() -> Result<(), Box<dyn Error>> {
         .collect();
 
     for class in &classes {
+        let name = if args.features.contains(&Feature::CombineImplAndInterface) {
+            class
+                .interfaces()
+                .first()
+                .map(|s| s.to_string())
+                .unwrap_or(class.name().to_string())
+        } else {
+            class.name().to_string()
+        };
+
         // Node itself
         if let Some(component_type) = class.component_type() {
             println!(
                 "    {} [fillcolor=\"{}\"style=filled];",
-                class.name(),
+                name,
                 component_type.color_code()
             )
         } else {
-            tracing::trace!("Skipping class without component type: {}", class.name());
+            tracing::trace!("Skipping class without component type: {}", name);
             continue;
         }
 
         // Imports
         if args.features.contains(&Feature::Import) {
-            tracing::trace!("{}: Imports {:?}", class.name(), class.imports());
+            tracing::trace!("{}: Imports {:?}", name, class.imports());
             for import in class.imports() {
                 tracing::trace!("Import here");
-                println!("    {} -> {} [label=\"@Import\"];", class.name(), import);
+                println!("    {} -> {} [label=\"@Import\"];", name, import);
             }
         }
 
@@ -209,8 +260,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 println!("    \"{}\" [style=filled];", package);
                 println!(
                     "    \"{}\" -> \"{}\" [label=\"@ComponentScan\"];",
-                    class.name(),
-                    package
+                    name, package
                 );
                 let scanned = classes
                     .iter()
@@ -221,14 +271,17 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
 
+        // Interface implementations
+        if !args.features.contains(&Feature::CombineImplAndInterface) {
+            for interface in class.interfaces() {
+                println!("    {} -> {} [label=impl];", interface, name);
+            }
+        }
+
         // Constructor injection
         if args.features.contains(&Feature::ConstructorInjection) {
             for param in class.parameters() {
-                println!(
-                    "    {} -> {} [label=\"@Autowired (CI)\"];",
-                    class.name(),
-                    param.class
-                );
+                println!("    {} -> {} [label=\"Constructor\"];", name, param.class);
             }
         }
 
@@ -237,7 +290,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             for autowire in class.autowires() {
                 println!(
                     "    {} -> {} [label=\"@Autowired\"];",
-                    class.name(),
+                    name,
                     autowire.class()
                 );
             }
@@ -247,11 +300,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         if args.features.contains(&Feature::Bean) {
             for bean in class.bean_defs() {
                 println!("    {} [fillcolor=\"#6b1d1d\",style=filled];", bean.class());
-                println!(
-                    "    {} -> {} [label=\"@Bean\"];",
-                    class.name(),
-                    bean.class()
-                );
+                println!("    {} -> {} [label=\"@Bean\"];", name, bean.class());
                 // Print bean parameters
                 if args.features.contains(&Feature::ConstructorInjection) {
                     for param in bean.parameters().iter() {
