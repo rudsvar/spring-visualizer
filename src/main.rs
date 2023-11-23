@@ -161,6 +161,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
     println!("digraph Components {{");
+    println!("    rankdir=LR;");
 
     print_legend();
 
@@ -188,6 +189,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 class.name(),
                 component_type.color_code()
             )
+        } else {
+            tracing::trace!("Skipping class without component type: {}", class.name());
+            continue;
         }
 
         // Imports

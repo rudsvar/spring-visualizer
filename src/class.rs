@@ -124,11 +124,18 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
                         _ => &mut class_builder,
                     }
                 }
+                "SpringBootApplication" => {
+                    class_builder.component_scans(vec![package.to_string()])
+                }
                 "ComponentScan" => {
                     let imports = annotation.value();
                     match imports {
                         Some(AnnotationArg::String(path)) => {
                             class_builder.component_scans(vec![path.clone()])
+                        }
+                        Some(AnnotationArg::Array(values)) if values.is_empty() => {
+                            tracing::info!("Empty component scan");
+                            class_builder.component_scans(vec![package.to_string()])
                         }
                         Some(AnnotationArg::Array(values)) => {
                             let mut paths = Vec::new();
