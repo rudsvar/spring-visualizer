@@ -1,4 +1,5 @@
 digraph Components {
+    rankdir=LR;
     # Legend
     "@SpringBootApplication" [fillcolor="#2c9162",style=filled];
     "@Configuration" [fillcolor="#28a9e0",style=filled];
@@ -16,8 +17,6 @@ digraph Components {
 
     DemoApplication [fillcolor="#2c9162"style=filled];
     DemoApplication -> ServiceConfig [label="@Import"];
-    ConstructorInjection [fillcolor="#a81347"style=filled];
-    ConstructorInjection -> ConstructorInjected [label="@Autowired (CI)"];
     BarService [fillcolor="#a81347"style=filled];
     BarService -> MyBean [label="@Autowired"];
     ConstructorInjected [fillcolor="#6b1d1d",style=filled];
@@ -28,18 +27,9 @@ digraph Components {
     FooService -> FooRepository [label="@Autowired"];
     ServiceConfig [fillcolor="#28a9e0"style=filled];
     ServiceConfig -> DaoConfig [label="@Import"];
-    "com.example.demo.service" [style=filled];
-    "ServiceConfig" -> "com.example.demo.service" [label="@ComponentScan"];
-    "com.example.demo.service" -> ConstructorInjection [label=contains];
-    "com.example.demo.service" -> BarService [label=contains];
-    "com.example.demo.service" -> FooService [label=contains];
     MyBean [fillcolor="#6b1d1d",style=filled];
     ServiceConfig -> MyBean [label="@Bean"];
     BarRepository [fillcolor="#e06907"style=filled];
     FooRepository [fillcolor="#e06907"style=filled];
     DaoConfig [fillcolor="#28a9e0"style=filled];
-    "com.example.demo.repository" [style=filled];
-    "DaoConfig" -> "com.example.demo.repository" [label="@ComponentScan"];
-    "com.example.demo.repository" -> BarRepository [label=contains];
-    "com.example.demo.repository" -> FooRepository [label=contains];
 }
