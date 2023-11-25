@@ -9,6 +9,7 @@ use derive_builder::Builder;
 use nom::{
     bytes::complete::{is_not, tag, take_while},
     character::complete::{alphanumeric1, char, multispace0},
+    combinator::opt,
     error::ErrorKind,
     multi::many0,
     sequence::delimited,
@@ -207,13 +208,15 @@ pub fn parse_class(input: &str) -> IResult<&str, Class> {
         let (input, (class, name)) = delimited(
             tag("@Autowired"),
             |input| {
+                let (input, _) =
+                    many0(delimited(multispace0, parse_annotation, multispace0))(input)?;
                 let (input, _) = multispace0(input)?;
                 let (input, class) = alphanumeric1(input)?;
                 let (input, _) = multispace0(input)?;
                 let (input, name) = alphanumeric1(input)?;
                 Ok((input, (class, name)))
             },
-            char(';'),
+            opt(char(';')),
         )(autowire_start)?;
         autowires.push(Autowired::new(class.to_string(), name.to_string()));
         autowire_start = input;
@@ -268,12 +271,15 @@ mod tests {
                         class: "Arg".to_string(),
                         name: "arg".to_string()
                     }],
-                    autowires: vec![Autowired::new("Foo".to_string(), "foo".to_string())],
+                    autowires: vec![
+                        Autowired::new("Foo".to_string(), "foo".to_string()),
+                        Autowired::new("FooBean".to_string(), "fooBean".to_string())
+                    ],
                     bean_defs: vec![Bean::new(
                         "MyBean".to_string(),
                         "myBean".to_string(),
                         vec![Parameter {
-                            annotations: vec!["@NotNull".to_string()],
+                            annotations: vec!["@Autowired".to_string(), "@NotNull".to_string()],
                             class: "FooBean".to_string(),
                             name: "fooBean".to_string()
                         }]
@@ -291,7 +297,7 @@ mod tests {
                 public class Foo implements IFoo {
                     @Autowired Foo foo;
                     @Bean
-                    public MyBean myBean(@NotNull FooBean fooBean) { ... }
+                    public MyBean myBean( @Autowired @NotNull FooBean fooBean ) { ... }
 
                     Foo(@Arg Arg arg) {}
                 }
