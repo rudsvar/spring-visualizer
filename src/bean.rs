@@ -11,6 +11,7 @@ use super::annotation::{parse_annotation, AnnotationArg};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Parameter {
+    pub annotations: Vec<String>,
     pub class: String,
     pub name: String,
 }
@@ -20,15 +21,17 @@ impl FromStr for Parameter {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
-        let (input, class) =
-            take_while::<_, _, nom::error::Error<_>>(|c: char| c.is_alphanumeric())(s)
-                .map_err(|e| format!("failed to parse parameter {}: {}", s, e))?;
-        let (input, _) = multispace0::<_, nom::error::Error<_>>(input)
-            .map_err(|e| format!("failed to parse parameter {}: {}", s, e))?;
-        let (_, name) =
-            take_while::<_, _, nom::error::Error<_>>(|c: char| c.is_alphanumeric())(input)
-                .map_err(|e| format!("failed to parse parameter {}: {}", s, e))?;
+        let mut parts = s.split_whitespace().collect::<Vec<_>>();
+        if parts.len() < 2 {
+            return Err(format!("missing parameter class or name {}", s));
+        }
+        let name = parts.pop().expect("no name");
+        let class = parts.pop().expect("no class");
+        if !parts.iter().all(|a| a.starts_with('@')) {
+            return Err(format!("missing @ on annotation {}", s));
+        }
         Ok(Parameter {
+            annotations: parts.into_iter().map(|a| a.to_string()).collect(),
             class: class.to_string(),
             name: name.to_string(),
         })
@@ -84,20 +87,7 @@ pub fn parse_bean(input: &str) -> IResult<&str, Bean> {
         params
             .trim_end_matches(')')
             .split(',')
-            .filter_map(|def| {
-                let def = def.trim();
-                let (input, class) =
-                    take_while::<_, _, nom::error::Error<_>>(|c: char| c.is_alphanumeric())(def)
-                        .ok()?;
-                let (input, _) = multispace0::<_, nom::error::Error<_>>(input).ok()?;
-                let (_, name) =
-                    take_while::<_, _, nom::error::Error<_>>(|c: char| c.is_alphanumeric())(input)
-                        .ok()?;
-                Some(Parameter {
-                    name: name.to_string(),
-                    class: class.to_string(),
-                })
-            })
+            .filter_map(|p| Parameter::from_str(p).ok())
             .collect()
     } else {
         vec![]
@@ -145,6 +135,7 @@ mod tests {
                     name: "myBean".to_string(),
                     class: "MyBean".to_string(),
                     parameters: vec![Parameter {
+                        annotations: vec![],
                         class: "FooBean".to_string(),
                         name: "fooBean".to_string()
                     }]
@@ -163,6 +154,7 @@ mod tests {
                     name: "newName".to_string(),
                     class: "MyBean".to_string(),
                     parameters: vec![Parameter {
+                        annotations: vec![],
                         class: "FooBean".to_string(),
                         name: "fooBean".to_string()
                     }]
@@ -176,10 +168,11 @@ mod tests {
     pub fn parameter_from_str() {
         assert_eq!(
             Ok(Parameter {
+                annotations: vec!["@Autowired".to_string()],
                 class: "Foo".to_string(),
                 name: "foo".to_string()
             }),
-            " Foo foo ".parse()
+            "  @Autowired  Foo   foo  ".parse()
         );
     }
 }

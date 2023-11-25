@@ -264,6 +264,7 @@ mod tests {
                     component_scans: vec!["a.b.c".to_string()],
                     name: "Foo".to_string(),
                     parameters: vec![Parameter {
+                        annotations: vec!["@Arg".to_string()],
                         class: "Arg".to_string(),
                         name: "arg".to_string()
                     }],
@@ -272,6 +273,7 @@ mod tests {
                         "MyBean".to_string(),
                         "myBean".to_string(),
                         vec![Parameter {
+                            annotations: vec!["@NotNull".to_string()],
                             class: "FooBean".to_string(),
                             name: "fooBean".to_string()
                         }]
@@ -289,9 +291,9 @@ mod tests {
                 public class Foo implements IFoo {
                     @Autowired Foo foo;
                     @Bean
-                    public MyBean myBean(FooBean fooBean) { ... }
+                    public MyBean myBean(@NotNull FooBean fooBean) { ... }
 
-                    Foo(Arg arg) {}
+                    Foo(@Arg Arg arg) {}
                 }
                 "#
             )
@@ -302,7 +304,7 @@ mod tests {
     fn parse_constructor_works() {
         let body = r#"
             // Docs with Foo?
-            public or something Foo(Bar bar, Baz baz) {
+            public or something Foo(@NotNull @Something Bar bar, Baz baz) {
                 // stuff
             }
         "#;
@@ -311,10 +313,12 @@ mod tests {
         assert_eq!(
             vec![
                 Parameter {
+                    annotations: vec!["@NotNull".to_string(), "@Something".to_string()],
                     class: "Bar".to_string(),
                     name: "bar".to_string(),
                 },
                 Parameter {
+                    annotations: vec![],
                     class: "Baz".to_string(),
                     name: "baz".to_string(),
                 }
